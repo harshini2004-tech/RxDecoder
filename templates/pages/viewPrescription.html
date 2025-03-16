@@ -1,0 +1,63 @@
+{% extends "layouts/base1.html" %}
+
+{% block title %} View Prescriptions {% endblock title %}
+
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}
+<style>
+  img {
+    border-radius: 7px;
+  }
+
+  .zoom {
+    transition: transform 0.2s;
+  }
+  .zoom:hover {
+  transform: scale(1.1); 
+}
+
+</style>
+{% endblock stylesheets %}
+
+{% block content %}
+
+<div class="content">
+    <div class="page-inner">
+      <div class="row">
+        <div class="col-md-12">
+          <div class="card">
+            <div class="card-header text-center">
+              <h4 class="card-title">View Prescription</h4>
+            </div>
+            <div class="card-body row">
+                {% for prescription in prescriptions %}
+                <div class="card col-md-3 m-5 br-5 text-center zoom" style="border-radius: 2em;">
+                  <div class="card-img mt-3">
+                    <img width="100%" alt="prescription_img" src="{{prescription.image.url}}">
+                  </div>
+                  <div class="card-header">
+                    <div>
+                      Uploaded By: {{prescription.uploaded_by.username}}
+                    </div>
+                    <div>
+                      Uploaded On: {{prescription.uploaded_on}}
+                    </div> 
+                  </div>
+                  <div class="container mt-3">
+                      <a href="/singleViewPrescription/{{prescription.id}}/">
+                        <button class="btn btn-primary mb-3">View</button>
+                      </a>                    
+                  </div>
+                </div>
+                {% endfor %}              
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+{% endblock content %}
+
+<!-- Specific JS goes HERE -->
+{% block javascripts %}{% endblock javascripts %}

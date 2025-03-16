@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Custom Settings Panel</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #C1C8E4; /* Light Lavender */
+            color: #333;
+            transition: background-color 0.3s ease;
+        }
+
+        .navbar {
+            background-color: #5680E9; /* Primary Blue */
+            padding: 15px;
+            color: rgb(179, 22, 22);
+            text-align: center;
+            transition: background-color 0.3s ease;
+        }
+
+        .sidebar {
+            background-color: #84CEEB; /* Light Blue */
+            width: 200px;
+            height: 100vh;
+            padding: 20px;
+            transition: background-color 0.3s ease;
+        }
+
+        .custom-template {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            width: 300px;
+            transition: transform 0.3s ease;
+        }
+
+        .custom-template .title {
+            background-color: #5680E9; /* Primary Blue */
+            color: white;
+            padding: 15px;
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .custom-content {
+            padding: 15px;
+        }
+
+        .switch-block {
+            margin-bottom: 20px;
+        }
+
+        .switch-block h4 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #333;
+        }
+
+        .btnSwitch {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .btnSwitch button {
+            width: 40px;
+            height: 40px;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .btnSwitch button:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        }
+
+        .btnSwitch button.selected {
+            border: 3px solid #8860D0; /* Purple */
+        }
+
+        .custom-toggle {
+            background-color: #5AB9EA; /* Medium Blue */
+            color: white;
+            text-align: center;
+            padding: 10px;
+            cursor: pointer;
+        }
+
+        .custom-toggle i {
+            font-size: 20px;
+        }
+
+        /* Color Classes */
+        .blue { background-color: #5680E9; } /* Primary Blue */
+        .light-blue { background-color: #84CEEB; } /* Light Blue */
+        .medium-blue { background-color: #5AB9EA; } /* Medium Blue */
+        .lavender { background-color: #C1C8E4; } /* Light Lavender */
+        .purple { background-color: #8860D0; } /* Purple */
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <div class="navbar">Navbar</div>
+
+    <!-- Sidebar -->
+    <div class="sidebar">Sidebar</div>
+
+    <!-- Settings Panel -->
+    <div class="custom-template">
+        <div class="title">Settings</div>
+        <div class="custom-content">
+            <div class="switcher">
+                <div class="switch-block">
+                    <h4>Navbar Header</h4>
+                    <div class="btnSwitch">
+                        <button type="button" class="changeTopBarColor" data-color="blue"></button>
+                        <button type="button" class="changeTopBarColor" data-color="light-blue"></button>
+                        <button type="button" class="changeTopBarColor" data-color="medium-blue"></button>
+                        <button type="button" class="changeTopBarColor" data-color="purple"></button>
+                    </div>
+                </div>
+                <div class="switch-block">
+                    <h4>Sidebar</h4>
+                    <div class="btnSwitch">
+                        <button type="button" class="selected changeSideBarColor" data-color="lavender"></button>
+                        <button type="button" class="changeSideBarColor" data-color="blue"></button>
+                        <button type="button" class="changeSideBarColor" data-color="purple"></button>
+                    </div>
+                </div>
+                <div class="switch-block">
+                    <h4>Background</h4>
+                    <div class="btnSwitch">
+                        <button type="button" class="changeBackgroundColor" data-color="lavender"></button>
+                        <button type="button" class="changeBackgroundColor selected" data-color="light-blue"></button>
+                        <button type="button" class="changeBackgroundColor" data-color="medium-blue"></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="custom-toggle">
+            <i class="flaticon-settings">⚙️</i>
+        </div>
+    </div>
+
+    <script>
+        // Function to handle color changes
+        function handleColorChange(className, color) {
+            const elements = document.querySelectorAll(`.${className}`);
+            elements.forEach(element => {
+                element.classList.remove('blue', 'light-blue', 'medium-blue', 'lavender', 'purple');
+                element.classList.add(color);
+            });
+        }
+
+        // Add event listeners to all color buttons
+        document.querySelectorAll('.changeTopBarColor, .changeSideBarColor, .changeBackgroundColor').forEach(button => {
+            button.addEventListener('click', function() {
+                const color = this.getAttribute('data-color');
+                const targetClass = this.classList.contains('changeTopBarColor') ? 'navbar' :
+                                    this.classList.contains('changeSideBarColor') ? 'sidebar' :
+                                    'body';
+
+                handleColorChange(targetClass, color);
+
+                // Update selected state
+                document.querySelectorAll('.btnSwitch button').forEach(btn => btn.classList.remove('selected'));
+                this.classList.add('selected');
+            });
+        });
+    </script>
+</body>
+</html>

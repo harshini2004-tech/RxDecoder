@@ -1,0 +1,92 @@
+{% extends "layouts/base1.html" %} {% block title %} Approval Page {% endblock title%}
+
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}{% endblock stylesheets %} {% block content %}
+
+<div class="content">
+  <div class="page-inner">
+    <div class="row">
+      <div class="col-md-6">
+        <div class="card p-5">
+          <div class="card-img">
+            <img src="{{annotated_image_uri}}" width="80%" alt="pres" />
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6 p-5">
+        <div class="card">
+          <!-- <img src="{{digitised_image_uri}}" width="80%" alt="pres" /> -->
+          <div class="card-body">
+            <table class="table table-hover" style='height:50vh; display:block; overflow:scroll;'>
+                <thead>
+                    <tr>
+                        <th scope="col">#</th>
+                        <th scope="col">Annotation</th>
+                        <th scope="col">Action</th>
+                        
+                        <!-- <th scope="col">View</th> -->
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for x in listAnnotations %}
+                    <tr>
+                      <td>{{forloop.counter}}</td>
+                      <td>{{x}}</td>
+                      <td class="d-flex">
+                        <div class="btn-group" role="group" aria-label="Basic example">
+                          <button type="button" class="btn btn-success" onclick="buttonClick(`{{forloop.counter}}`,true);" id = "{{forloop.counter}}"style="border-radius: 50%;"><i class="bi bi-check"></i></button>
+                          <button type="button" class="btn btn-danger" onclick="buttonClick(`{{forloop.counter}}n`,false)" id = "{{forloop.counter}}n"style="border-radius: 50%;"><i class="bi bi-x"></i></button>
+                        </div>
+                        <!-- <button class="btn btn-success btn-sm" style = "border-radius: 50%;" onclick="buttonClick(`{{forloop.counter}}`,true);" id = "{{forloop.counter}}"><i class="bi bi-check"></i></button> -->
+                        <!-- <button class="btn btn-danger btn-sm" style = "border-radius: 50%;" onclick="buttonClick(`{{forloop.counter}}n`,false)" id = "{{forloop.counter}}n"><i class="bi bi-x"></i></button> -->
+                      </td>
+                  </tr>
+                    {% endfor %}
+                </tbody>
+                
+            </table>
+            <form action="/updateApproval/{{prescription_id}}/" method="POST" class="text-center" enctype="multipart/form-data" >
+              {% csrf_token %}
+              <input type = "textbox" name = "correctAnnotations" value="0" id = "inc" hidden/> 
+              <input type = "textbox" name = "noOfAnnotations" value="{{noOfAnnotations}}" readonly  hidden/>
+              <!-- <input type="text" readonly class="form-control-plaintext" id="staticEmail"  name = "noOfAnnotations" value="{{noOfAnnotations}}"> -->
+  
+              <button type="submit" class="mt-5 btn btn-primary" style="border-radius: 40%;">Submit</button>
+          </form>
+        </div>
+        </div>
+      </div>
+      <div>
+       
+          
+      </div>
+    </div>
+   
+  </div>
+</div>
+
+<script>
+
+var i = 0;
+    function buttonClick(btnId,isTickBtn) {
+      
+        
+        if(isTickBtn){
+          i++;
+        document.getElementById('inc').value = i;
+        document.getElementById(btnId).hidden = true;
+        document.getElementById(btnId + "n").hidden = true;
+        }else{
+          document.getElementById(btnId).hidden = true;
+          document.getElementById(btnId.slice(0,btnId.length - 1)).hidden = true;
+        }
+
+    }
+
+</script>
+
+{% endblock content %}
+
+<!-- Specific JS goes HERE -->
+{% block javascripts %}{% endblock javascripts %}

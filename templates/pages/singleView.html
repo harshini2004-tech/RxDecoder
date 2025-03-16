@@ -1,0 +1,100 @@
+{% extends "layouts/base1.html" %}
+
+{% block title %} Single Prescription View {% endblock title %}
+
+<!-- Specific Page CSS goes HERE  -->
+{% block stylesheets %}
+<style>
+    .loader {
+        border: 3px solid #f3f3f3; /* Light grey */
+        border-top: 3px solid #3498db; /* Blue */
+        border-radius: 50%;
+        width: 21px;
+        height: 21px;
+        animation: spin 2s linear infinite;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+</style>
+{% endblock stylesheets %}
+
+{% block content %}
+
+<div class="content">
+    <div class="page-inner">
+        <!-- Card -->
+        <!-- <h4 class="page-title">
+            Uploaded By: {{prescription.uploaded_by.username}}<br>
+            Uploaded On: {{prescription.uploaded_on}}
+            
+        </h4> -->
+        <div class="row mt-5 pt-5 ml-3">
+            <div class="col-md-6">
+                <div class="card w-75 shadow-lg">
+                    <div class="card-img">
+                        <img width="100%" src="{{prescription.image.url}}">
+                        <h3 class="page-title ml-3 mt-2">
+                        Uploaded by : {{prescription.uploaded_by.username}}<br>
+            Uploaded on : {{prescription.uploaded_on}}
+                        </h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6"  >
+               {% if overall_confidence %}
+               <div class="text-center">
+                <h2>Overall Confidence: {{overall_confidence}}</h2>
+                <div class="m-5 p-2">
+                    <a href="/annotatePrescription/{{prescription.id}}/">
+                        <button class="btn btn-lg btn-warning">EDIT</button>
+                    </a>
+                </div>
+                <div class="m-5 p-2">
+                    <a href="/addMedication/{{prescription.id}}/">
+                        <button class="btn btn-lg btn-success">Medication</button>
+                    </a>
+                </div>
+                <div class="m-5 p-2">
+                    <a href="/visualiseAnnotation/{{prescription.id}}/"><button class="btn btn-lg btn-primary">VISUALIZE</button></a>
+                </div>
+                <div class="m-5 p-2">
+                    <!-- <a href="/visualiseAnnotation/{{prescription.id}}/"> -->
+                        <button class="btn btn-lg btn-danger"  type="button" id = "alpanaRaButton">
+                            Retrain
+                        </button>
+                    <!-- </a> -->
+                </div>
+                {% else %}
+                <div> <h3>Upload a Proper Prescription</h3><br><h4>No text Extracted</h4> </div>
+                {% endif %}
+            </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock content %}
+
+<!-- Specific JS goes HERE -->
+{% block javascripts %}
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+
+<script type="text/javascript">  
+    $(document).ready(function(){ 
+        $("#alpanaRaButton").click(function(){
+            var btn = document.getElementById('alpanaRaButton')
+            btn.innerHTML = " <div class = 'd-flex'><div>Training &nbsp</div><span class='loader'></span></div>"
+            btn.disabled = true
+            setTimeout(()=>{
+                var btn = document.getElementById('alpanaRaButton')
+                btn.innerHTML = "Retrain"
+                btn.disabled = false
+            }, 10000)       
+        });
+    });   
+</script> 
+{% endblock javascripts %}
