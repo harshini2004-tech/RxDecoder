@@ -24,7 +24,8 @@
                                 </div>
                                 <form action="/uploadPrescription/" method="POST" class="text-center" enctype="multipart/form-data">
                                     {% csrf_token %}
-                                    <input class="form-control" type="file" name="prescription_image" accept="image/*" capture id="image_input">
+                                    <!-- Accept both images and PDFs -->
+                                    <input class="form-control" type="file" name="prescription_image" accept="image/jpeg,image/png,image/jpg,.pdf" capture id="image_input">
                                     <button type="submit" class="mt-5 btn btn-primary">Submit</button>
                                 </form>
                             </div>
@@ -60,10 +61,13 @@
     var blah = document.getElementById('blah')
     inp.onchange = event => {
         const [file] = inp.files
-        if (file) {
+        if (file && file.type.startsWith("image/")) {
             blah.src = URL.createObjectURL(file)
+            blah.style = 'display: block'
+        } else {
+            // For PDF files, don't show image preview
+            blah.style = 'display: none'
         }
-        blah.style = 'display: block'
     }
 </script>
 {% endblock javascripts %}

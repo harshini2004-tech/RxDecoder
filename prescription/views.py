@@ -1,7 +1,9 @@
+
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from .models import Prescription, Approval, CustomerPrescription
 from django.http import JsonResponse
+from django.conf import settings
 import json
 from .utils import viewAnnotation, scrapeMedicineImage, sendTextWhatsapp
 from PIL import Image
@@ -12,556 +14,817 @@ import cv2
 import pytesseract
 import numpy as np
 from django.contrib.auth import get_user_model
+import requests
+import base64
+import re
+from openai import OpenAI
 
 User = get_user_model()
 
-# Create your views here.
+# API Configurations
+DEEPSEEK_API_KEY = "sk-dfbfd94a20bb43ecb12b32c5b04eb83e"  # Move to settings.py in production
+GEMINI_API_KEY = "AIzaSyBro-ar-hmHy7s48z5tAb08CwJhpD4l4Es"
+
 def homepage(request):
     if request.user.is_authenticated:
         return render(request, 'pages/homepage.html')
-    else:
-        return redirect('login')
+    return redirect('login')
+
 def clean_extracted_text(text):
-    """
-    Clean and structure the extracted text from prescription images.
-    """
-    import re
+    """Enhanced cleaning with line-by-line structure preservation"""
+    if not text:
+        return ""
     
-    # Remove unwanted characters and fix common OCR errors
-    text = re.sub(r'\s+', ' ', text)  # Remove extra spaces
+    # Split into lines and process each individually
+    lines = text.split('\n')
+    processed_lines = []
     
-    # Specific fixes for your prescription format
-    corrections = {
-        'FeSoy': 'FeSO4',
-        'FeSoy tab': 'FeSO4 tab',
-        'Siy': 'Sig',
-        'Siy:': 'Sig:',
-        'Sug:': 'Sig:',
-        'wees OL Lay': 'Once a day',
-        'wees': 'Once',
-        'OL Lay': 'a day',
-        'exo': 'Sex:',
-        '34G': '59',
-        '4B': 'Ascorbic Acid #30 500mg tab',
-        'pe 3d': '#30',
-        'Lo ES': '',
-        '—': ' ',
-        '$2 No': 'S2 No'
+    # Common prescription headers to detect and format
+    section_headers = {
+        'prescription': ['rx', 'medicines', 'prescription', 'treatment'],
+        'advice': ['advice', 'instructions', 'recommendation'],
+        'diagnosis': ['diagnosis', 'condition', 'findings'],
+        'patient': ['patient', 'name', 'age', 'gender'],
+        'doctor': ['doctor', 'dr.', 'physician', 'mbbs']
     }
     
-    for wrong, correct in corrections.items():
-        text = text.replace(wrong, correct)
+    current_section = None
     
-    # Try to structure the text better
-    lines = text.split('\n')
-    structured_text = ""
+    for line in lines:
+        line = re.sub(r'\s+', ' ', line).strip()
+        if not line:
+            continue
+            
+        # Check for section headers
+        line_lower = line.lower()
+        for section, keywords in section_headers.items():
+            if any(keyword in line_lower for keyword in keywords):
+                current_section = section.upper()
+                line = f"\n{current_section}:\n{line}"
+                break
+                
+        # Format medications specially
+        if current_section == 'PRESCRIPTION':
+            # Standardize medication formatting
+            line = re.sub(r'(\d+)\s*-\s*(\d+)\s*-\s*(\d+)', r'\1-\2-\3', line)  # Fix dosage like 1-1-1
+            line = re.sub(r'([a-z])(\d)', r'\1 \2', line)  # Add space between letters and numbers
+            line = re.sub(r'(\d)([a-z])', r'\1 \2', line)  # Add space between numbers and letters
+            
+        processed_lines.append(line)
+    
+    # Reconstruct text with proper spacing
+    structured_text = '\n'.join(processed_lines)
+    
+    # Final cleanup
+    structured_text = re.sub(r'\n{3,}', '\n\n', structured_text)  # Remove excessive newlines
+    return structured_text.strip()
+
+def structure_prescription_text(extracted_text):
+    """Convert raw extracted text into perfectly structured prescription format"""
+    structured_data = {
+        "patient_details": {},
+        "doctor_details": {},
+        "prescription_metadata": {},
+        "diagnoses": [],
+        "medications": [],
+        "investigations": [],
+        "advice": [],
+        "follow_up": {},
+        "signature": ""
+    }
+
+    # Helper function to clean medication lines
+    def clean_medication(line):
+        line = re.sub(r'\{|\}', '', line)  # Remove curly braces
+        line = re.sub(r'\s+', ' ', line).strip()
+        return line
+
+    # Process each line
+    lines = extracted_text.split('\n')
+    current_section = None
     
     for line in lines:
         line = line.strip()
-        if line:
-            structured_text += line + "\n"
-            
-    return structured_text
+        if not line:
+            continue
 
-import cv2
-import numpy as np
+        # Detect sections
+        if 'PATIENT:' in line:
+            current_section = 'patient_details'
+            continue
+        elif '℞' in line or 'Rx' in line:
+            current_section = 'medications'
+            continue
+        elif 'Adv:' in line:
+            current_section = 'advice'
+            structured_data['advice'].append(line.replace('Adv:', '').strip())
+            continue
 
-import cv2
-import numpy as np
-def enhance_image(image_path):
-    image = cv2.imread(image_path)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    
-    # Increase contrast using histogram equalization
-    equalized = cv2.equalizeHist(gray)
-    
-    # Sharpen the image
-    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-    sharpened = cv2.filter2D(equalized, -1, kernel)
+        # Process according to current section
+        if current_section == 'patient_details':
+            if '/' in line and '|' not in line:  # Likely date
+                structured_data['prescription_metadata']['date'] = line
+            elif any(x in line.lower() for x in ['mr', 'ms', 'mrs']):
+                structured_data['patient_details']['name'] = line
+            elif '/' in line and ('m' in line.lower() or 'f' in line.lower()):
+                age_gender = line.split('/')
+                structured_data['patient_details']['age'] = age_gender[0]
+                structured_data['patient_details']['gender'] = age_gender[1][0].upper()
+        
+        elif current_section == 'medications':
+            if 'Tab.' in line or 'Cap.' in line or 'Syrup' in line:
+                med_parts = clean_medication(line).split()
+                if med_parts:  # Check if med_parts is not empty
+                    medication = {
+                        'name': ' '.join(med_parts[:2]) if len(med_parts) >= 2 else med_parts[0] if med_parts else '',
+                        'dosage': med_parts[2] if len(med_parts) > 2 else '',
+                        'frequency': '',
+                        'duration': '',
+                        'instructions': ''
+                    }
+                    structured_data['medications'].append(medication)
+            elif any(x in line for x in ['-', 'x']):  # Dosage line
+                if structured_data['medications']:
+                    last_med = structured_data['medications'][-1]
+                    if '-' in line:  # Frequency
+                        last_med['frequency'] = line.split('x')[0].strip() if 'x' in line else line.strip()
+                        if 'x' in line:  # Duration
+                            last_med['duration'] = line.split('x')[1].strip()
+                    elif 'before' in line or 'after' in line:
+                        last_med['instructions'] = line
+        
+        elif current_section == 'advice':
+            structured_data['advice'].append(line)
 
-    # Apply adaptive thresholding
-    binary = cv2.adaptiveThreshold(
-        sharpened, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
-    )
+    # Format into the desired structure
+    output_lines = [
+        "✅ 1. Patient Details",
+        f"Name: {structured_data['patient_details'].get('name', '')}",
+        f"Age: {structured_data['patient_details'].get('age', '')}",
+        f"Gender: {structured_data['patient_details'].get('gender', '')}",
+        f"Date: {structured_data['prescription_metadata'].get('date', '')}",
+        "",
+        "✅ 2. Doctor Details",
+        "Doctor's Name: [To be extracted]",
+        "Clinic: The White Tusk",
+        "Contact: +91 810812311",
+        "",
+        "✅ 3. Prescription Metadata",
+        f"Date: {structured_data['prescription_metadata'].get('date', '')}",
+        "",
+        "✅ 4. Medications",
+    ]
 
-    return binary
+    for i, med in enumerate(structured_data['medications'], 1):
+        output_lines.extend([
+            f"{i}. {med['name']} {med['dosage']}",
+            f"   Frequency: {med['frequency']}",
+            f"   Duration: {med['duration']}",
+            f"   Instructions: {med.get('instructions', '')}",
+            ""
+        ])
 
+    output_lines.extend([
+        "✅ 5. Advice",
+        *[f"- {item}" for item in structured_data['advice']],
+        "",
+        "✅ 6. Clinic Information",
+        "Web: www.thewhitetusk.com",
+        "Email: info@thewhitetusk.com"
+    ])
 
+    return '\n'.join(output_lines)
 
-def preprocess_image(image_path):
-    """
-    Preprocess the image for better OCR accuracy.
-    """
-    # Load the image
-    image = cv2.imread(image_path)
+def extract_with_deepseek(image_path):
+    """Extract text from image using DeepSeek API with structured line-by-line output"""
+    try:
+        client = OpenAI(api_key=DEEPSEEK_API_KEY, base_url="https://api.deepseek.com")
+        
+        with open(image_path, 'rb') as img_file:
+            image_data = img_file.read()
+        
+        # Enhanced prompt for structured extraction
+        response = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[
+                {
+                    "role": "system", 
+                    "content": (
+                        "You are a medical prescription specialist. Extract text exactly as written, "
+                        "maintaining original line breaks and structure. Format as:\n"
+                        "1. Patient Details\n"
+                        "2. Doctor Details\n"
+                        "3. Date\n"
+                        "4. PRESCRIPTION (one medicine per line with dosage)\n"
+                        "5. ADVICE\n"
+                        "Keep original spacing and indentation where meaningful."
+                    )
+                },
+                {
+                    "role": "user", 
+                    "content": [
+                        {"type": "text", "text": "Extract this prescription with perfect line structure:"},
+                        {"type": "image_url", "image_url": f"data:image/jpeg;base64,{base64.b64encode(image_data).decode('utf-8')}"}
+                    ]
+                }
+            ],
+            stream=False
+        )
+        
+        return response.choices[0].message.content
 
-    if image is None:
-        raise ValueError("Image could not be loaded. Check the file path.")
+    except Exception as e:
+        print(f"DeepSeek API Error: {str(e)}")
+        return None
 
-    # Convert to grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+def extract_with_gemini(image_path):
+    """Extract text from image using Gemini API (fallback)"""
+    try:
+        with open(image_path, 'rb') as img_file:
+            base64_image = base64.b64encode(img_file.read()).decode('utf-8')
 
-    # Apply Gaussian blur to reduce noise
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
+        
+        headers = {"Content-Type": "application/json"}
+        
+        payload = {
+            "contents": [{
+                "parts": [
+                    {"text": "Extract all text from this medical prescription exactly as written, including medications, dosages, and instructions. Maintain original line breaks and structure."},
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": base64_image
+                        }
+                    }
+                ]
+            }]
+        }
 
-    # Apply adaptive thresholding
-    binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+        response = requests.post(url, headers=headers, json=payload)
+        response.raise_for_status()
+        
+        response_data = response.json()
+        extracted_text = response_data.get('candidates', [{}])[0].get('content', {}).get('parts', [{}])[0].get('text', '')
+        
+        return extracted_text
 
-    # Apply dilation to make text thicker
-    kernel = np.ones((2, 2), np.uint8)
-    dilated = cv2.dilate(binary, kernel, iterations=1)
-
-    # Deskew the image (if needed)
-    coords = np.column_stack(np.where(dilated > 0))
-    angle = cv2.minAreaRect(coords)[-1]
-    if angle < -45:
-        angle = -(90 + angle)
-    else:
-        angle = -angle
-    (h, w) = dilated.shape[:2]
-    center = (w // 2, h // 2)
-    M = cv2.getRotationMatrix2D(center, angle, 1.0)
-    rotated = cv2.warpAffine(dilated, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-
-    # Save the preprocessed image (for debugging)
-    output_path = 'preprocessed_image.jpg'
-    cv2.imwrite(output_path, rotated)
-
-    print(f"Preprocessed image saved as: {output_path}")
-
-    return rotated
-def extract_text_from_image(image_path):
-    """
-    Extract text from the preprocessed image using Tesseract.
-    """
-    # Preprocess the image
-    preprocessed_image = enhance_image(image_path)  # Use enhance_image instead
-    
-    # Extract text using Tesseract with optimized configuration for handwritten text
-    extracted_text = pytesseract.image_to_string(
-        preprocessed_image,
-        lang='eng',
-        config='--psm 4 --oem 1 -c tessedit_char_whitelist="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,#-:/ "'
-    )
-    
-    # Clean the extracted text
-    extracted_text = clean_extracted_text(extracted_text)
-    
-    return extracted_text
-
-
-from django.shortcuts import render, redirect
-from django.contrib.auth.decorators import login_required
-from .models import Prescription
-import pytesseract
-from PIL import Image
-import cv2
-import os
-
-from django.shortcuts import render, redirect
-from django.contrib.auth.decorators import login_required
-from .models import Prescription
-import pytesseract
-from PIL import Image
-import cv2
-import os
+    except Exception as e:
+        print(f"Gemini API Error: {str(e)}")
+        return None
 
 @login_required
 def uploadPrescription(request):
     if request.method == 'GET':
         return render(request, 'pages/uploadPrescription.html')
 
-    elif request.method == 'POST':
+    if request.method == 'POST':
         try:
             image = request.FILES.get('prescription_image')
             if not image:
-                return render(request, 'pages/uploadPrescription.html', {'error': 'No image uploaded'})
+                return render(request, 'pages/uploadPrescription.html', 
+                            {'error': 'No image uploaded'})
 
-            # Save prescription object
-            obj = Prescription.objects.create(uploaded_by=request.user, image=image)
+            if not image.name.lower().endswith(('.jpg', '.jpeg', '.png')):
+                return render(request, 'pages/uploadPrescription.html',
+                            {'error': 'Only JPG/JPEG/PNG images are supported'})
 
-            # Get the path of the uploaded image
-            image_path = obj.image.path
+            prescription = Prescription.objects.create(
+                uploaded_by=request.user, 
+                image=image
+            )
+            
+            # Save temporary file
+            temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_prescription.jpg')
+            with open(temp_path, 'wb+') as destination:
+                for chunk in image.chunks():
+                    destination.write(chunk)
+            
+            # Try DeepSeek first, fallback to Gemini
+            extracted_text = extract_with_deepseek(temp_path)
+            if not extracted_text:
+                extracted_text = extract_with_gemini(temp_path)
+            
+            # Clean up temp file
+            os.remove(temp_path)
+            
+            if not extracted_text:
+                prescription.delete()
+                return render(request, 'pages/uploadPrescription.html',
+                            {'error': 'Text extraction failed. Try a clearer image.'})
 
-            # Debugging: Print the image path
-            print(f"Image Path: {image_path}")
-
-            # Check if the image exists
-            if not os.path.exists(image_path):
-                return render(request, 'pages/uploadPrescription.html', {'error': 'Image file not found.'})
-
-            # Preprocess the image
-            def preprocess_image(image_path):
-                """
-                Preprocess the image for better OCR accuracy.
-                """
-                # Load the image
-                image = cv2.imread(image_path)
-
-                if image is None:
-                    raise ValueError("Image could not be loaded. Check the file path.")
-
-                # Convert to grayscale
-                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-                # Apply Gaussian blur to reduce noise
-                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-
-                # Apply adaptive thresholding
-                binary = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-
-                # Save the preprocessed image (for debugging)
-                output_path = 'preprocessed_image.jpg'
-                cv2.imwrite(output_path, binary)
-
-                print(f"Preprocessed image saved as: {output_path}")
-
-                return binary
-
-            # Preprocess the image
-            preprocessed_image = preprocess_image(image_path)
-
-            # Extract text using Tesseract
-            extracted_text = pytesseract.image_to_string(Image.open('preprocessed_image.jpg'), lang='eng', config='--psm 11')
-
-            # Debugging: Print the extracted text
-            print(f"Extracted Text: {extracted_text}")
-
-            # Check if text was extracted
-            if not extracted_text.strip():
-                return render(request, 'pages/uploadPrescription.html', {'error': 'No text extracted. Upload a proper prescription.'})
-
-            # Save the extracted text as annotation
-            obj.annotation = extracted_text
-            obj.save()
-
-            # Render the result in the template
-            context = {
-                'extracted_text': extracted_text,
-                'prescription': obj,
+            cleaned_text = clean_extracted_text(extracted_text)
+            
+            # Create structured annotation with line numbers
+            annotation = {
+                f"{prescription.image.url}/-1": {
+                    "regions": [],
+                    "metadata": {
+                        "line_structure": True,
+                        "total_lines": len(cleaned_text.split('\n'))
+                    }
+                }
             }
-            return render(request, 'pages/uploadPrescription.html', context)
+            
+            y_position = 10
+            line_number = 1
+            for line in cleaned_text.split('\n'):
+                if line.strip():
+                    is_header = line.endswith(':') and line[:-1].isupper()
+                    region = {
+                        "shape_attributes": {
+                            "name": "rect",
+                            "x": 10,
+                            "y": y_position,
+                            "width": 300,
+                            "height": 20 if not is_header else 25
+                        },
+                        "region_attributes": {
+                            "text": line.strip(),
+                            "confidence": 0.9,
+                            "line_number": line_number,
+                            "is_section_header": is_header
+                        }
+                    }
+                    annotation[f"{prescription.image.url}/-1"]["regions"].append(region)
+                    y_position += 30 if not is_header else 35
+                    line_number += 1
+            
+            prescription.annotation = annotation
+            prescription.save()
+
+            # Format for display with line numbers and section highlighting
+            display_lines = []
+            for i, line in enumerate(cleaned_text.split('\n'), 1):
+                if line.endswith(':') and line[:-1].isupper():
+                    display_lines.append(f'<strong class="text-primary">{i}. {line}</strong>')
+                else:
+                    display_lines.append(f'{i}. {line}')
+
+            return render(request, 'pages/uploadPrescription.html', {
+                'extracted_text': '\n'.join(display_lines),
+                'prescription': prescription,
+                'success': 'Prescription processed successfully!',
+                'structured': True
+            })
 
         except Exception as e:
-            return render(request, 'pages/uploadPrescription.html', {'error': f'Error: {str(e)}'})
-def viewPrescription(request):
-    if request.user.is_authenticated:
-        search = ""
-        result =  Prescription.objects.all()
-        prescriptions_containing_search = []
-        if 'search' in request.POST:
-            search = request.POST['search'].lower()
-            for prescription in result:
-                if search in (str(prescription.annotation).lower() + prescription.uploaded_by.username.lower()):
-                    prescriptions_containing_search.append(prescription)
-        else:
-            prescriptions_containing_search = result
-        data = {
-            'prescriptions' : prescriptions_containing_search,
-            'searched' : search
-        }
-        return render(request, 'pages/viewPrescription.html', context=data)
-    else:
-        return redirect('login')
+            return render(request, 'pages/uploadPrescription.html',
+                         {'error': f'Error: {str(e)}'})
 
-digitised_prescriptionImage_dir ='DigitizedPrescriptionImage/'
-digitised_prescriptionImagePdf_dir ='DigitizedPrescriptionImagePdf/'
-digitised_prescriptionPdf_dir = 'DigitizedPrescriptionPdf/'
-
-def visualizeAnnotation(request, prescription_id):
-    if request.user.is_authenticated:
-        prescription = Prescription.objects.get(id=prescription_id)
-        annotations = prescription.annotation
-        annotated_image, digitized_image,x = viewAnnotation(annotations, image_path = prescription.image.url)
-        
-        # create directories if do not exist
-        if not os.path.exists(digitised_prescriptionImage_dir):
-            os.makedirs(digitised_prescriptionImage_dir)
-
-        if not os.path.exists(digitised_prescriptionImagePdf_dir):
-            os.makedirs(digitised_prescriptionImagePdf_dir)
-
-        if not os.path.exists(digitised_prescriptionPdf_dir):
-            os.makedirs(digitised_prescriptionPdf_dir)
-
-        #img2pdf Code
-        url = prescription.image.url
-        url = url.split('/')[-1]
-        im = Image.fromarray(x)
-        im.save(os.path.join(digitised_prescriptionImage_dir+str(url)))
-        pdfdata = img2pdf.convert(digitised_prescriptionImage_dir+url)
-        file = open(digitised_prescriptionImagePdf_dir + url.split('.')[0]+'.pdf','wb')
-        file.write(pdfdata)
-        file.close()
-
-        prescription.digitzedImagePdf = digitised_prescriptionImagePdf_dir + url.split('.')[0]+'.pdf'
-        prescription.save()
-
-        #fpdf code
-        img = cv2.imread(str(prescription.image))
-        height, width = img.shape[0], img.shape[1]
-
-        pdf = FPDF('P','mm',[width,height])
-        pdf.add_page()
-        for annotation in annotations[prescription.image.url+"/-1"]['regions']:
-            height_of_box = annotation["shape_attributes"]["height"]
-            width_of_box = annotation["shape_attributes"]["width"]
-            fontScale = height_of_box / width_of_box
-            if fontScale > 0.5:
-                fontScale = 1.5
-            else:
-                fontScale = 1
-            pdf.set_font("Arial", size = 64*fontScale)
-            pdf.set_xy(annotation['shape_attributes']['x'],annotation['shape_attributes']['y']/1.33)
-            pdf.cell(annotation['shape_attributes']['width'], annotation['shape_attributes']['height'], txt = annotation['region_attributes']['text'])            
-        pdf.output(digitised_prescriptionPdf_dir + url.split('.')[0]+'.pdf')  
-
-        prescription.digitzedPdf = digitised_prescriptionPdf_dir + url.split('.')[0]+'.pdf'
-        prescription.save()
-
-        context = {
-            'prescription': prescription,
-            'annotated_image_uri': annotated_image,
-            'digitised_image_uri': digitized_image,
-            'digitised_image_uri_pdf' : prescription.digitzedImagePdf.url,
-            'digitised_pdf_uri' : prescription.digitzedPdf.url
-        }
-
-        return render(request, 'pages/visualise.html', context=context)
-    else:
-        return redirect('login')
-
-def Prescriptions(request):
-    if request.user.is_authenticated:
-        return render(request, 'pages/prescriptions.html')
-    else:
-        return redirect('login')
-
+# Medication Extraction View
+@login_required
 def addMedication(request, prescription_id):
-    if request.user.is_authenticated:
-        prescription = Prescription.objects.get(id=prescription_id)
-        image_path = prescription.image.path  # Local path of the uploaded image
-
-        # Extract text using Tesseract
-        extracted_text = pytesseract.image_to_string(Image.open(image_path))
-
-        # Simple medication name detection (basic NLP approach)
-        words = extracted_text.split()
-        medication_list = [word for word in words if word.istitle()]  # Example: Capturing capitalized words
-
+    prescription = get_object_or_404(Prescription, id=prescription_id)
+    medication_list = []
+    
+    try:
+        if prescription.annotation:
+            annotation = json.loads(prescription.annotation) if isinstance(prescription.annotation, str) else prescription.annotation
+            
+            url_key = f"{prescription.image.url}/-1"
+            if url_key in annotation and 'regions' in annotation[url_key]:
+                annotation_text = " ".join([
+                    region['region_attributes']['text'] 
+                    for region in annotation[url_key]['regions']
+                ])
+                
+                med_pattern = r'\b(?:Tab\.|Tablet|Cap\.|Capsule|Inj\.|Injection|Syrup)\s+([A-Z][a-zA-Z0-9\-\s]+(?:\s+\d+\s*(?:mg|g|ml|%|mcg)?)?)'
+                medication_list = re.findall(med_pattern, annotation_text)
+                
+                if not medication_list:
+                    potential_meds = re.findall(r'\b[A-Z][a-z]{2,}\b', annotation_text)
+                    common_words = ['Patient', 'Doctor', 'Hospital', 'Clinic', 'Date']
+                    medication_list = [word for word in potential_meds if word not in common_words]
+        
         prescription.medication = {"medications": medication_list}
         prescription.save()
 
-        context = {
-            'medications': medication_list,
-        }
-
+        context = {'medications': medication_list}
         return render(request, 'pages/medication.html', context=context)
+
+    except Exception as e:
+        return render(request, 'pages/medication.html',
+                    {'error': f'Error extracting medications: {str(e)}'})
+
+# Prescription Management Views
+@login_required
+def Prescriptions(request):
+    return render(request, 'pages/prescriptions.html')
+
+@login_required
+def viewPrescription(request):
+    search = ""
+    result = Prescription.objects.all()
+    prescriptions_containing_search = []
+    
+    if 'search' in request.POST:
+        search = request.POST['search'].lower()
+        for prescription in result:
+            if prescription.annotation and search in (str(prescription.annotation).lower() + prescription.uploaded_by.username.lower()):
+                prescriptions_containing_search.append(prescription)
     else:
-        return redirect('login')
+        prescriptions_containing_search = result
+        
+    data = {
+        'prescriptions': prescriptions_containing_search,
+        'searched': search
+    }
+    return render(request, 'pages/viewPrescription.html', context=data)
 
-def singleView(request, prescription_id):
-    if request.user.is_authenticated:
-        prescription = Prescription.objects.get(id=prescription_id)
-        annotation = prescription.annotation
+# Digitization Views
+digitised_prescriptionImage_dir = 'DigitizedPrescriptionImage/'
+digitised_prescriptionImagePdf_dir = 'DigitizedPrescriptionImagePdf/'
+digitised_prescriptionPdf_dir = 'DigitizedPrescriptionPdf/'
 
-        # Ensure annotation is a dictionary
-        if isinstance(annotation, str):
-            try:
-                annotation = json.loads(annotation)  # Convert string to dictionary
-            except json.JSONDecodeError:
-                annotation = {}  # Fallback to an empty dictionary
+@login_required
+def visualizeAnnotation(request, prescription_id):
+    prescription = get_object_or_404(Prescription, id=prescription_id)
+    annotations = prescription.annotation
+    
+    if not annotations:
+        return render(request, 'pages/error.html', {'error': 'Annotation not found for this prescription'})
+        
+    annotated_image, digitized_image, x = viewAnnotation(annotations, image_path=prescription.image.url)
+    
+    # Create directories if they don't exist
+    for directory in [digitised_prescriptionImage_dir, 
+                     digitised_prescriptionImagePdf_dir, 
+                     digitised_prescriptionPdf_dir]:
+        if not os.path.exists(directory):
+            os.makedirs(directory)
 
-        url = prescription.image.url + "/-1"
-        confidence = 0
+    # img2pdf Conversion
+    url = prescription.image.url.split('/')[-1]
+    im = Image.fromarray(x)
+    im.save(os.path.join(digitised_prescriptionImage_dir, str(url)))
+    
+    with open(os.path.join(digitised_prescriptionImagePdf_dir, url.split('.')[0] + '.pdf'), 'wb') as file:
+        file.write(img2pdf.convert(os.path.join(digitised_prescriptionImage_dir, url)))
+    
+    prescription.digitzedImagePdf = os.path.join(digitised_prescriptionImagePdf_dir, url.split('.')[0] + '.pdf')
+    
+    # FPDF Generation
+    try:
+        img = cv2.imread(str(prescription.image.path))  # Use path instead of str directly
+        if img is None:
+            raise Exception("Failed to load image")
+            
+        height, width = img.shape[0], img.shape[1]
 
-        # Check if the annotation contains the expected structure
-        if annotation and url in annotation and 'regions' in annotation[url]:
-            for r in annotation[url]['regions']:
-                confidence += r['region_attributes'].get('confidence', 0)
-
-            if len(annotation[url]['regions']):
-                confidence /= len(annotation[url]['regions'])
+        pdf = FPDF('P', 'mm', [width, height])
+        pdf.add_page()
+        
+        key = f"{prescription.image.url}/-1"
+        if key in annotations and 'regions' in annotations[key]:
+            for annotation in annotations[key]['regions']:
+                height_of_box = annotation["shape_attributes"]["height"]
+                width_of_box = annotation["shape_attributes"]["width"]
+                fontScale = height_of_box / width_of_box
+                fontScale = 1.5 if fontScale > 0.5 else 1
+                
+                pdf.set_font("Arial", size=min(64 * fontScale, 24))  # Limit font size
+                pdf.set_xy(annotation['shape_attributes']['x'], annotation['shape_attributes']['y'] / 1.33)
+                pdf.cell(annotation['shape_attributes']['width'], 
+                        annotation['shape_attributes']['height'], 
+                        txt=annotation['region_attributes']['text'])
+                
+        output_path = os.path.join(digitised_prescriptionPdf_dir, url.split('.')[0] + '.pdf')
+        pdf.output(output_path)  
+        prescription.digitzedPdf = output_path
+        prescription.save()
 
         context = {
             'prescription': prescription,
-            'predicted': bool(prescription.medication),  # Check if medication exists
-            'overall_confidence': round(confidence, 2),
+            'annotated_image_uri': annotated_image,
+            'digitised_image_uri': digitized_image,
+            'digitised_image_uri_pdf': prescription.digitzedImagePdf,
+            'digitised_pdf_uri': prescription.digitzedPdf
         }
 
-        return render(request, 'pages/singleView.html', context=context)
-    else:
-        return redirect('login')
+        return render(request, 'pages/visualise.html', context=context)
+    except Exception as e:
+        return render(request, 'pages/error.html', {'error': f'Error visualizing annotation: {str(e)}'})
 
-def annotatePrescription(request, prescription_id):
-    if request.user.is_authenticated:
-        context = {
-            'prescription': Prescription.objects.get(id=prescription_id),
-        }
-        return render(request, 'annotator/via.html', context=context)
-    else:
-        return redirect("login")
+# Customer Prescription Views
+@login_required
+def customerView(request):
+    return render(request, 'pages/uploadCustomer.html')
 
-def medication(result):
-    res = ''
-    for word in result:
-        res += word[1]+ ' '
-    # Implement your own logic for medication extraction here
-    pass
+@login_required
+def customerUploadForm(request):
+    if request.method == 'POST':
+        try:
+            phoneNumber = request.POST.get('phoneNumber')
+            if not phoneNumber:
+                return render(request, 'pages/uploadCustomer.html', {'error': 'Phone number is required'})
+                
+            image = request.FILES.get('prescription_image')
+            if not image:
+                return render(request, 'pages/uploadCustomer.html', {'error': 'Prescription image is required'})
+                
+            obj = CustomerPrescription(uploaded_by=request.user, image=image, phoneNumber=int(phoneNumber))
+            obj.save()
 
-def predictPrescription(request, prescription_id):
-    if request.user.is_authenticated:
-        image_data = Prescription.objects.get(id=prescription_id).image
-        img = str(image_data)
-        # Implement your own logic for prediction here
-        pass
-    else:
-        return redirect("login")
+            # Process the prescription
+            temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_customer_prescription.jpg')
+            with open(temp_path, 'wb+') as destination:
+                for chunk in image.chunks():
+                    destination.write(chunk)
+            
+            # Try DeepSeek first, fallback to Gemini
+            extracted_text = extract_with_deepseek(temp_path)
+            if not extracted_text:
+                extracted_text = extract_with_gemini(temp_path)
+            
+            os.remove(temp_path)
+            
+            if not extracted_text:
+                obj.delete()
+                return render(request, 'pages/uploadCustomer.html',
+                            {'error': 'Failed to extract text from prescription'})
 
-def addAnnotation(request, prescription_id):
-    prescription = Prescription.objects.get(id=prescription_id)
-    annotations = request.POST['annotation']
-    annotations = json.loads(annotations)
-    prescription.annotation = annotations
-    prescription.save()
-    return JsonResponse({"abc":"dad"})
+            cleaned_text = clean_extracted_text(extracted_text)
+            
+            # Create annotation
+            annotation = {
+                f"{obj.image.url}/-1": {
+                    "regions": []
+                }
+            }
+            
+            y_position = 10
+            for line in cleaned_text.split('\n'):
+                if line.strip():
+                    region = {
+                        "shape_attributes": {
+                            "name": "rect",
+                            "x": 10,
+                            "y": y_position,
+                            "width": 300,
+                            "height": 20
+                        },
+                        "region_attributes": {
+                            "text": line.strip(),
+                            "confidence": 0.9
+                        }
+                    }
+                    annotation[f"{obj.image.url}/-1"]["regions"].append(region)
+                    y_position += 30
+            
+            obj.annotation = annotation
+            
+            # Extract medications
+            med_pattern = r'\b(?:Tab\.|Tablet|Cap\.|Capsule|Inj\.|Injection|Syrup)\s+([A-Z][a-zA-Z0-9\-\s]+(?:\s+\d+\s*(?:mg|g|ml|%|mcg)?)?)'
+            medication_list = re.findall(med_pattern, cleaned_text)
+            
+            if not medication_list:
+                potential_meds = re.findall(r'\b[A-Z][a-z]{2,}\b', cleaned_text)
+                common_words = ['Patient', 'Doctor', 'Hospital', 'Clinic', 'Date']
+                medication_list = [word for word in potential_meds if word not in common_words]
+            
+            obj.medication = {"medications": medication_list}
+            obj.save()
 
-def deletePrescription(request, prescription_id):
-    if request.user.is_authenticated:
-        search = None
-        prescription = Prescription.objects.get(id=prescription_id)
-        if request.user == prescription.uploaded_by:
-            prescription.delete()
-        return redirect( "home")
-    else:
-        return redirect('login')
+            # Send medicine info via WhatsApp
+            medicineImageUrl = []
+            for medicine in medication_list:
+                try:
+                    img_url, name = scrapeMedicineImage(medicine)
+                    if img_url:
+                        medicineImageUrl.append([img_url, name])
+                        sendTextWhatsapp(phoneNumber, name, img_url)
+                except Exception as e:
+                    print(f"Error sending WhatsApp for {medicine}: {str(e)}")
+                    continue
 
-def viewApproval(request):
-    if request.user.is_authenticated:
-            result =  Approval.objects.filter(checkedBy = request.user)
             context = {
-                'fetchedApprovals' : result,
-          }
-            return render(request, 'pages/viewApproval.html', context=context)
-    else:
-        return redirect('login')
+                "phoneNumber": phoneNumber,
+                "medicine_data": medicineImageUrl,
+                "extracted_text": cleaned_text,
+                "success": "Prescription processed and sent successfully!"
+            }
+            return render(request, 'pages/sentToWhatsapp.html', context=context)
+            
+        except Exception as e:
+            return render(request, 'pages/uploadCustomer.html',
+                         {'error': f'Error processing prescription: {str(e)}'})
+    
+    return redirect('customerView')
 
-def processApproval(request,prescription_id):
-    if request.user.is_authenticated:
-        prescription = Prescription.objects.get(id=prescription_id)
-        annotations = prescription.annotation
-        annotated_image, digitized_image,x = viewAnnotation(annotations, image_path = prescription.image.url)
-        c = 0
+# Approval Views
+@login_required
+def viewApproval(request):
+    result = Approval.objects.filter(checkedBy=request.user)
+    context = {'fetchedApprovals': result}
+    return render(request, 'pages/viewApproval.html', context=context)
 
+@login_required
+def processApproval(request, prescription_id):
+    prescription = get_object_or_404(Prescription, id=prescription_id)
+    annotations = prescription.annotation
+    
+    if not annotations:
+        return render(request, 'pages/error.html', {'error': 'No annotations found for this prescription'})
+    
+    try:
+        key = f"{prescription.image.url}/-1"
+        if key not in annotations or 'regions' not in annotations[key]:
+            return render(request, 'pages/error.html', {'error': 'Invalid annotation format'})
+            
+        annotated_image, digitized_image, x = viewAnnotation(annotations, image_path=prescription.image.url)
+        
         listAnnotations = []
-        for annotation in annotations[prescription.image.url+"/-1"]['regions']:
-            c+=1
-            listAnnotations.append(annotation['region_attributes']['text'])
+        for annotation in annotations[key]['regions']:
+            if 'region_attributes' in annotation and 'text' in annotation['region_attributes']:
+                listAnnotations.append(annotation['region_attributes']['text'])
+        
+        # Create approval record if it doesn't exist
+        approval, created = Approval.objects.get_or_create(
+            prescription=prescription,
+            checkedBy=request.user,
+            defaults={'status': 'Pending'}
+        )
         
         context = {
             'annotated_image_uri': annotated_image,
             'digitised_image_uri': digitized_image,
-            'noOfAnnotations' : c,
-            'prescription_id' : prescription_id,
-            'listAnnotations' : listAnnotations
+            'noOfAnnotations': len(listAnnotations),
+            'prescription_id': prescription_id,
+            'listAnnotations': listAnnotations
         }
         
         return render(request, 'pages/approvalPage.html', context=context)
-    else:
-        return redirect('login')
+    except Exception as e:
+        return render(request, 'pages/error.html', {'error': f'Error processing approval: {str(e)}'})
 
-def updateApproval(request,prescription_id):
-    if request.user.is_authenticated:
-        prescription = Prescription.objects.get(id=prescription_id)
-        approval = Approval.objects.get(prescription = prescription,checkedBy = request.user)
+# Utility Views
+@login_required
+def addAnnotation(request, prescription_id):
+    if request.method != 'POST':
+        return JsonResponse({"status": "error", "message": "Invalid request method"}, status=405)
+        
+    try:
+        prescription = get_object_or_404(Prescription, id=prescription_id)
+        annotations = json.loads(request.POST.get('annotation', '{}'))
+        
+        if not annotations:
+            return JsonResponse({"status": "error", "message": "Invalid annotation data"}, status=400)
+            
+        prescription.annotation = annotations
+        prescription.save()
+        return JsonResponse({"status": "success"})
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
 
-        correctAnnotations = request.POST['correctAnnotations']
-        noOfAnnotations = request.POST['noOfAnnotations']
-        ratio = int(correctAnnotations) / int(noOfAnnotations)
+@login_required
+def deletePrescription(request, prescription_id):
+    try:
+        prescription = get_object_or_404(Prescription, id=prescription_id)
+        if request.user == prescription.uploaded_by:
+            prescription.delete()
+            return redirect("home")
+        else:
+            return render(request, 'pages/error.html', {'error': 'You are not authorized to delete this prescription'})
+    except Exception as e:
+        return render(request, 'pages/error.html', {'error': f'Error deleting prescription: {str(e)}'})
+
+@login_required
+def predictPrescription(request, prescription_id):
+    """Predict prescription details from image"""
+    try:
+        prescription = get_object_or_404(Prescription, id=prescription_id)
+        
+        # Process image if not already processed
+        if not prescription.annotation:
+            temp_path = os.path.join(settings.MEDIA_ROOT, 'temp_predict_prescription.jpg')
+            with open(temp_path, 'wb+') as destination:
+                for chunk in prescription.image.chunks():
+                    destination.write(chunk)
+            
+            extracted_text = extract_with_deepseek(temp_path)
+            os.remove(temp_path)
+            
+            if not extracted_text:
+                return JsonResponse({
+                    "status": "error",
+                    "message": "Failed to extract text from prescription"
+                })
+            
+            cleaned_text = clean_extracted_text(extracted_text)
+            
+            # Create annotation structure
+            annotation = {
+                f"{prescription.image.url}/-1": {
+                    "regions": []
+                }
+            }
+            
+            y_position = 10
+            for line in cleaned_text.split('\n'):
+                if line.strip():
+                    region = {
+                        "shape_attributes": {
+                            "name": "rect",
+                            "x": 10,
+                            "y": y_position,
+                            "width": 300,
+                            "height": 20
+                        },
+                        "region_attributes": {
+                            "text": line.strip(),
+                            "confidence": 0.9
+                        }
+                    }
+                    annotation[f"{prescription.image.url}/-1"]["regions"].append(region)
+                    y_position += 30
+            
+            prescription.annotation = annotation
+            prescription.save()
+        
+        return JsonResponse({
+            "status": "success",
+            "prescription_id": prescription_id,
+            "annotation": prescription.annotation,
+            "medication": prescription.medication or {}  # Handle None case
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            "status": "error",
+            "message": str(e)
+        }, status=500)
+@login_required
+def updateApproval(request, prescription_id):
+    """Update approval status for a prescription"""
+    try:
+        prescription = get_object_or_404(Prescription, id=prescription_id)
+        
+        # Get or create approval record
+        approval, created = Approval.objects.get_or_create(
+            prescription=prescription, 
+            checkedBy=request.user,
+            defaults={'status': 'Pending'}
+        )
+
+        # Get data from POST request
+        correctAnnotations = int(request.POST.get('correctAnnotations', 0))
+        noOfAnnotations = int(request.POST.get('noOfAnnotations', 1))
+        
+        # Prevent division by zero
+        if noOfAnnotations <= 0:
+            noOfAnnotations = 1
+            
+        # Calculate confidence ratio
+        ratio = correctAnnotations / noOfAnnotations
+
+        # Initialize confidence and noChecked if they don't exist
+        if not hasattr(prescription, 'confidence') or prescription.confidence is None:
+            prescription.confidence = 0.0
+        if not hasattr(prescription, 'noChecked') or prescription.noChecked is None:
+            prescription.noChecked = 0
 
         if approval.status == "Reviewed":
-            prescription.confidence = calculateConfidence(prescription.noChecked,prescription.confidence,ratio)
-            
-        else :
+            # Update existing review
+            prescription.confidence = (prescription.confidence * prescription.noChecked + ratio) / (prescription.noChecked + 1)
+        else:
+            # New review
             approval.status = "Reviewed"
-            prescription.confidence = calculateConfidence(prescription.noChecked,prescription.confidence,ratio)
-            prescription.noChecked = prescription.noChecked + 1
+            prescription.confidence = (prescription.confidence * prescription.noChecked + ratio) / (prescription.noChecked + 1)
+            prescription.noChecked += 1
 
         approval.save()
         prescription.save()
 
-        return redirect('approvals')
-    else:
-        return redirect('login')
+        return redirect('viewApproval')
 
+    except Exception as e:
+        # Handle errors appropriately
+        return render(request, 'pages/error.html', {
+            'error': f"Failed to update approval: {str(e)}"
+        })
+
+@login_required
 def dashboard(request):
-    return render(request, 'pages/dashboard.html')
-
-def customerView(request):
-    if request.user.is_authenticated:
-        return render(request,'pages/uploadCustomer.html')
-    else:
-        return redirect('login')
-
-def customerUploadForm(request):
-    if request.user.is_authenticated:
-        if request.method == 'POST':
-            phoneNumber = request.POST['phoneNumber']
-            image = request.FILES['prescription_image']
-            obj = CustomerPrescription(uploaded_by=request.user, image=image, phoneNumber = int(phoneNumber))
-            obj.save()
-
-            predictCustomerPrescription(request, obj.id)
-
-            prescription = CustomerPrescription.objects.get(id=obj.id)
-            annotation = CustomerPrescription.objects.get(id=obj.id).annotation
-            url = prescription.image.url+"/-1"
-            res = ''
-            
-            PROTECTED_HEALTH_INFORMATION = []
-            info = {}
-            Medication = {}
-            med=[]
-            c = []
-            ph=[]
-            f=[]
-            test_treatment = []
-            medicalCondition = []
-            Anatomy = []
-
-            if len(annotation[url]['regions']):
-                for r in annotation[url]['regions']:
-                    res+=" "+r['region_attributes']['text']
-                # Implement your own logic for entity extraction here
-                pass
-
-            prescription.medication = Medication
-            prescription.save()
-
-            medicineList = c
-            
-            medicineImageUrl = []
-            for medicine in medicineList:
-                img_url, name = scrapeMedicineImage(medicine)
-                medicineImageUrl.append([img_url, name])
-            
-            for image in medicineImageUrl:
-                sendTextWhatsapp(phoneNumber, image[1], image[0])
-            context = {
-                "phoneNumber" : phoneNumber,
-                "medicine_data": medicineImageUrl,
-            }
-            return render(request,'pages/sentToWhatsapp.html', context= context)
-        else:
-            return redirect('customerView')
-    else:
-        return redirect('login')
-
-def predictCustomerPrescription(request, prescription_id):
-    if request.user.is_authenticated:
-        image_data = CustomerPrescription.objects.get(id=prescription_id).image
-        img = str(image_data)
-        # Implement your own logic for prediction here
-        pass
-    else:
-        return redirect("login") 
+    """Render the dashboard page with statistics"""
+    try:
+        # Get basic statistics
+        prescription_count = Prescription.objects.count()
+        customer_count = CustomerPrescription.objects.count()
+        approval_count = Approval.objects.filter(status="Reviewed").count()
+        
+        # Get recent prescriptions
+        recent_prescriptions = Prescription.objects.order_by('-created_at')[:5]
+        
+        context = {
+            'prescription_count': prescription_count,
+            'customer_count': customer_count,
+            'approval_count': approval_count,
+            'recent_prescriptions': recent_prescriptions
+        }
+        
+        return render(request, 'pages/dashboard.html', context=context)
+    except Exception as e:
+        return render(request, 'pages/error.html', {
+            'error': f"Dashboard error: {str(e)}"
+        })

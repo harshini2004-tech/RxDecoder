@@ -1,8 +1,8 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views  # Import auth_views for built-in views
 from .views import (
-    homepage, uploadPrescription, viewPrescription, Prescriptions, singleView,
-    annotatePrescription, addAnnotation, predictPrescription, visualizeAnnotation,
+    homepage, uploadPrescription, viewPrescription, Prescriptions,
+    addAnnotation, predictPrescription, visualizeAnnotation,
     addMedication, deletePrescription, viewApproval, processApproval, updateApproval,
     dashboard, customerView, customerUploadForm
 )
@@ -13,8 +13,6 @@ urlpatterns = [
     path('viewPrescription/', viewPrescription, name='prescriptions'),
     path('deletePrescription/<int:prescription_id>/', deletePrescription, name='deletePrescription'),
     path('prescriptions/', Prescriptions, name='Viewprescriptions'),
-    path('singleViewPrescription/<int:prescription_id>/', singleView, name='singleViewPres'),
-    path('annotatePrescription/<int:prescription_id>/', annotatePrescription, name='annotatePrescription'),
     path('predictPrescription/<int:prescription_id>/', predictPrescription, name='predictPrescription'),
     path('addMedication/<int:prescription_id>/', addMedication, name='addMedication'),
     path('addAnnotation/<int:prescription_id>/', addAnnotation),
