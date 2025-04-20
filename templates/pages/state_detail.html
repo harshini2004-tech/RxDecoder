@@ -1,0 +1,118 @@
+{% extends "layouts/base1.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <h2>Case Trends for {{ state }}</h2>
+
+  <div class="row">
+    <div class="col-md-6">
+      <h5>Last 365 Days</h5>
+      <canvas id="yearChart"></canvas>
+    </div>
+    <div class="col-md-6">
+      <h5>Last 24 Hours</h5>
+      <canvas id="dayChart"></canvas>
+    </div>
+  </div>
+
+  <hr>
+
+  <h4 class="mt-4">📢 Live Health News Updates for {{ state }}</h4>
+  <ul id="news-headlines" class="list-group mt-2">
+    <li class="list-group-item">Fetching latest headlines...</li>
+  </ul>
+</div>
+
+{{ year_dates|json_script:"year-dates" }}
+{{ year_cases|json_script:"year-cases" }}
+{{ day_hours|json_script:"day-hours" }}
+{{ day_cases|json_script:"day-cases" }}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script>
+  const yearDates = JSON.parse(document.getElementById('year-dates').textContent);
+  const yearCases = JSON.parse(document.getElementById('year-cases').textContent);
+  const dayHours = JSON.parse(document.getElementById('day-hours').textContent);
+  const dayCases = JSON.parse(document.getElementById('day-cases').textContent);
+
+  if (yearDates && yearCases && dayHours && dayCases) {
+    const yearCtx = document.getElementById('yearChart').getContext('2d');
+    new Chart(yearCtx, {
+      type: 'line',
+      data: {
+        labels: yearDates,
+        datasets: [{
+          label: 'Daily Cases',
+          data: yearCases,
+          fill: false,
+          borderColor: '#007bff',
+          borderWidth: 2,
+          pointRadius: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: 'Date' } },
+          y: { title: { display: true, text: 'Cases' }, beginAtZero: true }
+        }
+      }
+    });
+
+    const dayCtx = document.getElementById('dayChart').getContext('2d');
+    new Chart(dayCtx, {
+      type: 'line',
+      data: {
+        labels: dayHours,
+        datasets: [{
+          label: 'Hourly Cases',
+          data: dayCases,
+          fill: true,
+          backgroundColor: 'rgba(255,99,132,0.2)',
+          borderColor: 'rgba(255,99,132,1)',
+          borderWidth: 2,
+          pointRadius: 3
+        }]
+      },
+      options: {
+        responsive: true,
+        scales: {
+          x: { title: { display: true, text: 'Hour of Day' } },
+          y: { title: { display: true, text: 'Cases' }, beginAtZero: true }
+        }
+      }
+    });
+  } else {
+    console.error("Data arrays are missing or improperly passed.");
+  }
+
+  // ✅ Fetch news from your Django backend to avoid CORS issues
+  const state = "{{ state }}";
+  const backendNewsURL = `/api/fetch_health_news/?state=${encodeURIComponent(state)}`;
+
+  fetch(backendNewsURL)
+    .then(res => res.json())
+    .then(data => {
+      const headlines = data.articles || [];
+      const newsList = document.getElementById('news-headlines');
+      newsList.innerHTML = '';
+
+      if (headlines.length > 0) {
+        headlines.forEach(article => {
+          const li = document.createElement('li');
+          li.className = 'list-group-item';
+          li.innerHTML = `<strong>${article.title}</strong><br><a href="${article.url}" target="_blank">${article.source.name}</a>`;
+          newsList.appendChild(li);
+        });
+      } else {
+        newsList.innerHTML = `<li class="list-group-item text-warning">No health-related news found for ${state}. Please try again later.</li>`;
+      }
+    })
+    .catch(err => {
+      console.error("News fetch failed:", err);
+      const newsList = document.getElementById('news-headlines');
+      newsList.innerHTML = `<li class="list-group-item text-danger">Failed to load news. Please check your connection or try again later.</li>`;
+    });
+</script>
+{% endblock %}

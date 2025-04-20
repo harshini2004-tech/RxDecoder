@@ -31,78 +31,125 @@
                     </div>
                 </div>
             </div>
+            
             {% if request.user.doctorprofile_set.all %}
+            <!-- Doctor-Specific Links -->
             <ul class="nav nav-primary">
                 <li class="nav-item {% if 'index' in segment %} active {% endif %}">
-                    <a  href="/doctor_homepage/">
+                    <a href="/doctor_homepage/">
                         <i class="fas fa-home"></i>
                         <p>Doctor Page</p>
                     </a>
-                    <a  href="/appointments/">
-                        <i class="fas fa-home"></i>
+                </li>
+                <li class="nav-item">
+                    <a href="/appointments/">
+                        <i class="fas fa-calendar-check"></i>
                         <p>Appointments</p>
                     </a>
-                </li> 
+                </li>
+                <li class="nav-item">
+                    <a href="http://localhost:8501" target="_blank">
+                        <i class="fa fa-pills"></i>
+                        <p>Medicine Recommendation</p>
+                    </a>
+                </li>
                 <li class="nav-section">
                     <span class="sidebar-mini-icon">
                         <i class="fa fa-ellipsis-h"></i>
                     </span>
                 </li>
-                
+                <li class="nav-item">
+                    <a href="/disease_severity/">
+                        <i class="fa fa-heartbeat"></i>
+                        <p>Disease Severity</p>
+                    </a>
+                    <span class="severity-level">
+                        {% if disease_severity %}
+                            {{ disease_severity }}
+                        {% else %}
+                            No severity assigned
+                        {% endif %}
+                    </span>
+                </li>
             </ul>
             {% else %}
+            <!-- Non-Doctor Links -->
             <ul class="nav nav-primary">
                 <li class="nav-item {% if 'index' in segment %} active {% endif %}">
-                    <!-- <a  href="/dashboard/">
-                        <i class="fas fa-home"></i>
-                        <p>DashBoard</p>
-                    </a> -->
-                    <a  href="/dashboard/">
-                        <!-- <i class="fas fa-chart-bar"></i> -->
+                    <a href="/dashboard/">
                         <i class="fa-solid fa-chart-column"></i>
                         <p>Dashboard</p>
                     </a>
-                    <a  href="/uploadPrescription/">
+                </li>
+                <li class="nav-item">
+                    <a href="/uploadPrescription/">
                         <i class="fas fa-upload"></i>
-                        <p>Upload</p>
+                        <p>Upload Prescription</p>
                     </a>
-                    <a  href="/viewPrescription/">
+                </li>
+                <li class="nav-item">
+                    <a href="/viewPrescription/">
                         <i class="fas fa-chart-bar"></i>
                         <p>View Prescription</p>
                     </a>
-                    <a  href="/viewApproval/">
-                        <!-- <i class="fas fa-chart-bar"></i> -->
+                </li>
+                <li class="nav-item">
+                    <a href="http://localhost:8501" target="_blank">
+                        <i class="fa fa-pills"></i>
+                        <p>Medicine Recommendation</p>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/viewApproval/">
                         <i class="fa-solid fa-person-circle-check"></i>
                         <p>Approval</p>
                     </a>
-                    <a  href="/uploadCustomer/">
-                        <!-- <i class="fas fa-chart-bar"></i> -->
+                </li>
+                <li class="nav-item">
+                    <a href="/uploadCustomer/">
                         <i class="fa-solid fa-user-doctor"></i>
                         <p>Customer Prescription</p>
                     </a>
-                    <!-- <a  href="/prescriptions/">
-                        <i class="fas fa-chart-bar"></i>
-                        <p>Review Prescriptions</p>
-                    </a> -->
-                </li> 
+                </li>
                 <li class="nav-section">
                     <span class="sidebar-mini-icon">
                         <i class="fa fa-ellipsis-h"></i>
                     </span>
                 </li>
-                
+                <li class="nav-item">
+                    <a href="{% url 'prevailing_24h' %}">
+                        <i class="fa fa-heartbeat"></i>
+                        <p>Disease Severity</p>
+                    </a>
+                    <span class="severity-level">
+                        {% if disease_severity %}
+                            {{ disease_severity }}
+                        {% else %}
+                            No severity assigned
+                        {% endif %}
+                    </span>
+                </li>
             </ul>
             {% endif %}
+
+            <!-- ✅ Chatbot visible to all logged-in users -->
+            <ul class="nav nav-primary">
+                <li class="nav-item">
+                    <a href="/chatbot/">
+                        <i class="fa fa-robot"></i>
+                        <p>AI Chatbot</p>
+                    </a>
+                </li>
+            </ul>
         {% else %}
+            <!-- If the user is not authenticated -->
             <ul class="nav nav-primary">
                 <li class="mx-4 mt-2">
-                    <a href="/login/"
-                        class="btn btn-danger btn-block">
+                    <a href="/login/" class="btn btn-danger btn-block">
                         <span class="btn-label mr-2"> <i class="fa fa-user-plus"></i> </span>LOGIN</a> 
                 </li>
                 <li class="mx-4 mt-2">
-                    <a href="/register/" 
-                        class="btn btn-danger btn-block">
+                    <a href="/register/" class="btn btn-danger btn-block">
                         <span class="btn-label mr-2"> <i class="fa fa-user-plus"></i> </span>SIGN UP</a> 
                 </li>
             </ul>
@@ -110,4 +157,4 @@
         </div>
     </div>
 </div>
-<!-- End Sidebar -->
+<!-- End Sidebar --> 

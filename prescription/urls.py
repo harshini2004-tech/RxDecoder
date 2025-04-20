@@ -1,4 +1,6 @@
 from django.urls import path
+from . import views
+
 from django.contrib.auth import views as auth_views  # Import auth_views for built-in views
 from .views import (
     homepage, uploadPrescription, viewPrescription, Prescriptions,
@@ -24,4 +26,20 @@ urlpatterns = [
     path('uploadCustomer/', customerView, name="customerView"),
     path('uploadCustomerForm/', customerUploadForm, name="customerUploadForm"),
     path('logout/', auth_views.LogoutView.as_view(), name='logout'),  # Logout URL
+    # alias for the same HTML page
+    path('prevailing24h/', views.prevailing_diseases_24h, name='prevailing_24h'),
+    # raw JSON
+    path('get-health-news/', views.get_health_news, name='get_health_news'),
+    path('api/prevailing24h/', views.prevailing_diseases_api, name='prevailing_24h_api'),
+ path('state/<str:state>/', views.state_detail, name='state_detail'),
+    # your existing disease_severity/ route:
+    path('disease_severity/', views.prevailing_diseases_24h, name='disease_severity'),
+   # path('api/fetch_health_news', views.fetch_health_news, name='fetch_health_news'),
+     path('api/fetch_health_news/', views.fetch_health_news, name='fetch_health_news'),
+    path('api/fetch_health_news/', views.get_health_news, name='fetch_health_news'),
+    path('chatbot/', views.chatbot, name='chatbot'),
+    path('gemini-webhook/', views.gemini_webhook, name='gemini_webhook'),
+    #path('gemini-webhook/', views.gemini_webhook, name='gemini-webhook'),
+    path('gemini-chat/', views.gemini_webhook, name='gemini_chat'),
+    
 ]

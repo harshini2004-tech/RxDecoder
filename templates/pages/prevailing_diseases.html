@@ -1,0 +1,42 @@
+{% extends "layouts/base1.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <h2>Prevailing Diseases in India (Last 24 hrs)</h2>
+  <div class="card mt-3">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table align-items-center mb-0">
+          <thead>
+            <tr>
+              <th>State</th>
+              <th>Disease</th>
+              <th>Severity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in states_data %}
+            <tr>
+              <td>
+                <a href="{% url 'state_detail' state=item.state %}">
+                  {{ item.state }}
+                </a>
+              </td>
+              <td>{{ item.disease }}</td>
+              <td>
+                <span class="badge 
+                  {% if item.severity == 'High' %}bg-danger
+                  {% elif item.severity == 'Medium' %}bg-warning
+                  {% else %}bg-success{% endif %}">
+                  {{ item.severity }}
+                </span>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

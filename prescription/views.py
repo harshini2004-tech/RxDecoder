@@ -34,6 +34,7 @@ def clean_extracted_text(text):
     """Enhanced cleaning with line-by-line structure preservation"""
     if not text:
         return ""
+    text = re.sub(r'<[^>]+>', '', text)
     
     # Split into lines and process each individually
     lines = text.split('\n')
@@ -80,18 +81,80 @@ def clean_extracted_text(text):
     return structured_text.strip()
 
 def structure_prescription_text(extracted_text):
-    """Convert raw extracted text into perfectly structured prescription format"""
+    """Convert raw extracted text into perfectly structured prescription format."""
+    
+    # Define the structured data format
     structured_data = {
-        "patient_details": {},
-        "doctor_details": {},
-        "prescription_metadata": {},
-        "diagnoses": [],
-        "medications": [],
-        "investigations": [],
-        "advice": [],
-        "follow_up": {},
-        "signature": ""
+        "patient_details": {
+            "name": "",             # Patient's full name
+            "age": "",              # Age or Date of Birth
+            "gender": "",           # Gender
+            "address": "",          # Address (if available)
+            "contact": "",          # Contact information (phone/email)
+            "patient_id": ""        # Unique patient identifier
+        },
+        "doctor_details": {
+            "name": "",             # Doctor's full name
+            "qualification": "",    # Medical qualification (MD, MBBS, etc.)
+            "specialization": "",   # Doctor's specialization (e.g., Cardiologist, General Physician)
+            "contact": "",          # Contact information of the doctor
+            "clinic_address": "",   # Clinic or hospital address
+            "registration_number": ""  # Doctor's registration/license number
+        },
+        "prescription_metadata": {
+            "prescription_date": "",   # Date the prescription was written
+            "expiry_date": "",         # Expiry date (if applicable)
+            "prescription_id": "",     # Unique ID for the prescription
+            "visit_number": "",        # Visit number or appointment number
+            "doctor_notes": ""         # Any additional notes from the doctor
+        },
+        "diagnoses": [
+            {
+                "diagnosis": "",       # Diagnosis name or description
+                "code": "",            # Diagnosis code (if available, e.g., ICD code)
+                "severity": ""         # Severity of the condition (optional)
+            }
+        ],
+        "medications": [
+            {
+                "name": "",            # Medication name (e.g., Paracetamol)
+                "dosage": "",          # Dosage (e.g., 500mg)
+                "route": "",           # Route of administration (oral, injection, etc.)
+                "frequency": "",       # Frequency (e.g., 3 times a day)
+                "duration": "",        # Duration of the prescription (e.g., 5 days)
+                "instructions": ""      # Additional instructions (e.g., take with food)
+            }
+        ],
+        "investigations": [
+            {
+                "test_name": "",       # Investigation or test name (e.g., Blood Test)
+                "test_code": "",       # Test code (if applicable)
+                "instructions": ""     # Test instructions (if any)
+            }
+        ],
+        "advice": [
+            {
+                "advice": "",          # General advice given by the doctor
+                "category": "",        # Type of advice (e.g., dietary, exercise)
+                "duration": ""         # Duration of the advice (e.g., 1 week, ongoing)
+            }
+        ],
+        "follow_up": {
+            "next_appointment_date": "",   # Date of the next appointment
+            "follow_up_instructions": ""   # Instructions for follow-up (if any)
+        },
+        "signature": {
+            "doctor_name": "",             # Doctor's full name
+            "doctor_signature": "",        # Image or text signature (optional)
+            "license_number": "",          # Doctor's license number
+            "date_signed": ""              # Date when the prescription was signed
+        }
     }
+
+    # Add the logic to populate structured_data with the extracted text
+    
+    return structured_data
+
 
     # Helper function to clean medication lines
     def clean_medication(line):
@@ -804,27 +867,295 @@ def updateApproval(request, prescription_id):
             'error': f"Failed to update approval: {str(e)}"
         })
 
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponseRedirect
+
 @login_required
 def dashboard(request):
-    """Render the dashboard page with statistics"""
+    """Redirects to the React dashboard with access token"""
     try:
-        # Get basic statistics
-        prescription_count = Prescription.objects.count()
-        customer_count = CustomerPrescription.objects.count()
-        approval_count = Approval.objects.filter(status="Reviewed").count()
-        
-        # Get recent prescriptions
-        recent_prescriptions = Prescription.objects.order_by('-created_at')[:5]
-        
-        context = {
-            'prescription_count': prescription_count,
-            'customer_count': customer_count,
-            'approval_count': approval_count,
-            'recent_prescriptions': recent_prescriptions
-        }
-        
-        return render(request, 'pages/dashboard.html', context=context)
+        # You can generate or fetch the token here if needed dynamically
+        redirect_url = "http://localhost:3000/#access_token=ya29.a0AZYkNZjUpqb3AUUNuEncix14py3u8YahV7b_uLQZQMdyooc3aSdEo1ydfIUutnr7d1L5ilsuLmfuUbdgjuB15hPVd4ZbTU23AWXSFKbE_eEl4mhcAwTWAbEFJzxIGQeybix3kA58Aka-jEaakdAytwQjDdCyyrbGmmXI2RDtSAaCgYKAScSARcSFQHGX2Mi6ErUrsKKq2d0G7xNbYx8QQ0177&token_type=Bearer&expires_in=3599&scope=https://www.googleapis.com/auth/fitness.oxygen_saturation.read%20https://www.googleapis.com/auth/fitness.sleep.read%20https://www.googleapis.com/auth/fitness.heart_rate.read%20https://www.googleapis.com/auth/fitness.body.read%20https://www.googleapis.com/auth/fitness.blood_pressure.read%20https://www.googleapis.com/auth/fitness.location.read%20https://www.googleapis.com/auth/fitness.body_temperature.read%20https://www.googleapis.com/auth/fitness.activity.read"
+
+        return HttpResponseRedirect(redirect_url)
+
     except Exception as e:
         return render(request, 'pages/error.html', {
-            'error': f"Dashboard error: {str(e)}"
+            'error': f"Dashboard redirect error: {str(e)}"
         })
+
+from django.shortcuts import render
+from django.contrib.auth.decorators import login_required
+
+@login_required
+def disease_severity_view(request):
+    # Pass whatever context you want, e.g. from a model or processing logic
+    context = {
+        'disease_severity': 'Moderate'  # example static data
+    }
+    return render(request, 'disease_severity.html', context)
+import requests
+from django.shortcuts import render
+from django.http import JsonResponse
+
+def get_disease_data_from_api():
+    # Sample mockup
+    prompt = "Get the current disease severity trend for all districts in Karnataka. Format as JSON."
+
+    response = requests.post(
+        "https://api.deepseek.com/v1/chat/completions",  # or Gemini equivalent
+        headers={"Authorization": "Bearer YOUR_API_KEY"},
+        json={
+            "model": "deepseek-chat",  # or Gemini Pro
+            "messages": [{"role": "user", "content": prompt}]
+        }
+    )
+
+    data = response.json()
+    return data  # Ensure it's parsed correctly
+
+import requests, json
+from requests.exceptions import RequestException
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from django.http import JsonResponse
+
+# Replace GEMINI_API_KEY with your real key (or move into settings.py)
+GEMINI_API_KEY = "AIzaSyBro-ar-hmHy7s48z5tAb08CwJhpD4l4Es"
+
+def fetch_prevailing_diseases_last24h():
+    prompt = """
+    For each state in India, over the last 24 hours, identify the single most prevalent disease 
+    and its severity (High/Medium/Low). Return as a JSON array of objects:
+    [
+      {"state": "Maharashtra", "disease": "Dengue", "severity": "High"},
+      {"state": "Karnataka", "disease": "Malaria", "severity": "Medium"},
+      ...
+    ]
+    """
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/"
+        f"models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
+    )
+    payload = {"contents":[{"parts":[{"text": prompt}]}]}
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+        resp.raise_for_status()
+        text = (
+            resp.json()
+               ["candidates"][0]
+               ["content"]["parts"][0]
+               ["text"]
+        )
+        return json.loads(text)
+    except (RequestException, KeyError, ValueError, json.JSONDecodeError):
+        # Fallback sample for all 28+ states:
+        return [
+            {"state":"Andhra Pradesh","disease":"Dengue","severity":"Medium"},
+            {"state":"Arunachal Pradesh","disease":"Malaria","severity":"Low"},
+            {"state":"Assam","disease":"Cholera","severity":"High"},
+            {"state":"Bihar","disease":"Typhoid","severity":"Medium"},
+            {"state":"Chhattisgarh","disease":"Malaria","severity":"High"},
+            {"state":"Goa","disease":"Dengue","severity":"Low"},
+            {"state":"Gujarat","disease":"Cholera","severity":"Medium"},
+            {"state":"Haryana","disease":"Typhoid","severity":"Low"},
+            {"state":"Himachal Pradesh","disease":"Dengue","severity":"Low"},
+            {"state":"Jharkhand","disease":"Malaria","severity":"Medium"},
+            {"state":"Karnataka","disease":"Dengue","severity":"High"},
+            {"state":"Kerala","disease":"Cholera","severity":"Medium"},
+            {"state":"Madhya Pradesh","disease":"Typhoid","severity":"High"},
+            {"state":"Maharashtra","disease":"Dengue","severity":"High"},
+            {"state":"Manipur","disease":"Malaria","severity":"Low"},
+            {"state":"Meghalaya","disease":"Cholera","severity":"Medium"},
+            {"state":"Mizoram","disease":"Dengue","severity":"Low"},
+            {"state":"Nagaland","disease":"Malaria","severity":"Low"},
+            {"state":"Odisha","disease":"Cholera","severity":"High"},
+            {"state":"Punjab","disease":"Typhoid","severity":"Medium"},
+            {"state":"Rajasthan","disease":"Dengue","severity":"Medium"},
+            {"state":"Sikkim","disease":"Malaria","severity":"Low"},
+            {"state":"Tamil Nadu","disease":"Dengue","severity":"High"},
+            {"state":"Telangana","disease":"Cholera","severity":"Medium"},
+            {"state":"Tripura","disease":"Typhoid","severity":"Low"},
+            {"state":"Uttar Pradesh","disease":"Cholera","severity":"High"},
+            {"state":"Uttarakhand","disease":"Dengue","severity":"Medium"},
+            {"state":"West Bengal","disease":"Typhoid","severity":"High"}
+        ]
+
+@login_required
+def prevailing_diseases_24h(request):
+    """
+    Renders the table of prevailing diseases for each Indian state
+    over the last 24 hours.
+    """
+    states_data = fetch_prevailing_diseases_last24h()
+    return render(request, 'pages/prevailing_diseases.html', {
+        'states_data': states_data
+    })
+
+@login_required
+def prevailing_diseases_api(request):
+    """
+    Returns the same data as JSON:
+    [
+      {"state":"...", "disease":"...", "severity":"..."},
+      ...
+    ]
+    """
+    data = fetch_prevailing_diseases_last24h()
+    return JsonResponse(data, safe=False)
+import requests, json
+from requests.exceptions import RequestException
+from django.shortcuts import render
+from django.http import JsonResponse
+from django.contrib.auth.decorators import login_required
+
+def fetch_state_time_series(state):
+    """
+    Calls Gemini to get two series for `state`:
+      1. daily cases for the past 365 days
+      2. hourly cases for the last 24 hours
+    Falls back to sample data on any error.
+    """
+    prompt = f"""
+    For the state of {state}, provide two JSON arrays:
+    1) "year_dates" & "year_cases" → daily total cases for each of the past 365 days
+    2) "day_hours"  & "day_cases"  → case count for each hour in the last 24 hours
+
+    Format exactly as:
+    {{
+      "year_dates": ["2024-04-19", …],
+      "year_cases":  [120, 115, …],
+      "day_hours":   ["00:00","01:00",…,"23:00"],
+      "day_cases":   [5,3, …,4]
+    }}
+    """
+    url = (
+        "https://generativelanguage.googleapis.com/v1beta/"
+        f"models/gemini-pro:generateContent?key={GEMINI_API_KEY}"
+    )
+    payload = {"contents":[{"parts":[{"text": prompt}]}]}
+    headers = {"Content-Type": "application/json"}
+
+    try:
+        r = requests.post(url, json=payload, headers=headers, timeout=10)
+        r.raise_for_status()
+        text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
+        return json.loads(text)
+    except (RequestException, KeyError, ValueError, json.JSONDecodeError):
+        # fallback sample
+        import datetime, random
+        today = datetime.date.today()
+        year_dates = [(today - datetime.timedelta(days=i)).isoformat() for i in range(364, -1, -1)]
+        year_cases = [random.randint(50,200) for _ in year_dates]
+        day_hours = [f"{h:02d}:00" for h in range(24)]
+        day_cases = [random.randint(0,10) for _ in day_hours]
+        return {
+            "year_dates": year_dates,
+            "year_cases": year_cases,
+            "day_hours": day_hours,
+            "day_cases": day_cases
+        }
+
+@login_required
+def state_detail(request, state):
+    """
+    Renders a drill‑down page for `state` showing:
+     • a 365‑day line chart
+     • a 24‑hour line chart
+    """
+    data = fetch_state_time_series(state)
+    return render(request, 'pages/state_detail.html', {
+        'state': state,
+        **data
+    })
+import requests
+from django.http import JsonResponse
+
+def get_health_news(request):
+    # Gemini API endpoint
+    gemini_news_url = 'https://geminiapi.com/v2/news?category=health&region=Andhra%20Pradesh&apiKey=YOUR_API_KEY&pageSize=5'
+    
+    # Send request to Gemini API
+    response = requests.get(gemini_news_url)
+    
+    if response.status_code == 200:
+        # Return the news data as JSON response
+        return JsonResponse(response.json(), safe=False)
+    else:
+        # Handle the error if API request fails
+        return JsonResponse({"error": "Failed to fetch news"}, status=500)
+
+
+from django.http import JsonResponse
+import requests
+
+def fetch_health_news(request):
+    state = request.GET.get('state', 'Andhra Pradesh')
+    api_url = f'https://geminiapi.com/v2/news?category=health&region={state}&apiKey=IzaSyBro-ar-hmHy7s48z5tAb08CwJhpD4l4Es&pageSize=5'
+
+    try:
+        response = requests.get(api_url)
+        data = response.json()
+        return JsonResponse({'articles': data.get('articles', [])})
+    except Exception as e:
+        print(f"Error fetching health news for {state}: {e}")
+        return JsonResponse({'error': 'Failed to fetch news.'}, status=500)
+    from django.shortcuts import render
+
+def chatbot(request):
+    return render(request, 'pages/chatbot.html')
+import json
+import requests
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+
+import json
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from google import genai  # Import the genai library
+
+# Initialize the Gemini API client
+client = genai.Client(api_key="AIzaSyBro-ar-hmHy7s48z5tAb08CwJhpD4l4Es")  # Replace with your actual Gemini API key
+
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+import google.generativeai as genai
+
+# Configure Gemini with your API key
+genai.configure(api_key="AIzaSyBro-ar-hmHy7s48z5tAb08CwJhpD4l4Es")  # Replace with your actual key
+
+@csrf_exempt
+def gemini_webhook(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            user_input = data.get('prompt')  # frontend sends "prompt", not "message"
+
+            if not user_input:
+                return JsonResponse({"response": "No input provided."}, status=400)
+
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = model.generate_content(user_input)
+
+            return JsonResponse({"response": response.text})
+        
+        except Exception as e:
+            return JsonResponse({"response": f"Error: {str(e)}"}, status=500)
+
+    return JsonResponse({"error": "Invalid request method."}, status=405)
+
+
+# Function to interact with the Gemini API
+def get_gemini_response(user_input):
+    try:
+        # Use the Gemini API to generate a response
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",  # Specify the correct model
+            contents=user_input
+        )
+        return response.text  # Return the text of the response
+    except Exception as e:
+        return f"Error: {str(e)}"  # Return error message if anything goes wrong

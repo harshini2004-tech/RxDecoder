@@ -1,66 +1,82 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<meta http-equiv="X-UA-Compatible" content="IE=edge" />
-
-	<title>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>
         {% block title %}{% endblock %}
     </title>
 
-	<meta content='width=device-width, initial-scale=1.0, shrink-to-fit=no' name='viewport' />
-	<link rel="icon" href="/static/assets/img/icon.ico" type="image/x-icon"/>
+    <meta content='width=device-width, initial-scale=1.0, shrink-to-fit=no' name='viewport' />
+    <link rel="icon" href="/static/assets/img/icon.ico" type="image/x-icon"/>
 
-	<!-- Fonts and icons -->
-	<script src="/static/assets/js/plugin/webfont/webfont.min.js"></script>
-	<script>
-		WebFont.load({
-			google: {"families":["Lato:300,400,700,900"]},
-			custom: {"families":["Flaticon", "Font Awesome 5 Solid", "Font Awesome 5 Regular", "Font Awesome 5 Brands", "simple-line-icons"], 
-			urls: ['/static/assets/css/fonts.min.css']},
-			active: function() {
-				sessionStorage.fonts = true;
-			}
-		});
-	</script>
+    <!-- Fonts and icons -->
+    <script src="/static/assets/js/plugin/webfont/webfont.min.js"></script>
+    <script>
+        WebFont.load({
+            google: {"families":["Lato:300,400,700,900"]},
+            custom: {"families":["Flaticon", "Font Awesome 5 Solid", "Font Awesome 5 Regular", "Font Awesome 5 Brands", "simple-line-icons"], 
+            urls: ['/static/assets/css/fonts.min.css']},
+            active: function() {
+                sessionStorage.fonts = true;
+            }
+        });
+    </script>
 
-	<!-- CSS Files -->
-	<link rel="stylesheet" href="/static/assets/css/bootstrap.min.css">
-	<link rel="stylesheet" href="/static/assets/css/atlantis.css">
-	<link rel="stylesheet" href="/static/assets/css/demo.css">
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css" integrity="sha512-MV7K8+y+gLIBoVD59lQIYicR65iaqukzvf/nwasF0nqhPay5w/9lJmVM2hMDcnK1OnMGCdVK+iQrJ7lzPJQd1w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.3.0/font/bootstrap-icons.css">
+    <!-- CSS Files -->
+    <link rel="stylesheet" href="/static/assets/css/bootstrap.min.css">
+    <link rel="stylesheet" href="/static/assets/css/atlantis.css">
+    <link rel="stylesheet" href="/static/assets/css/demo.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.1/css/all.min.css" integrity="sha512-MV7K8+y+gLIBoVD59lQIYicR65iaqukzvf/nwasF0nqhPay5w/9lJmVM2hMDcnK1OnMGCdVK+iQrJ7lzPJQd1w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.3.0/font/bootstrap-icons.css">
 
-
-    <!-- Specific Page CSS goes HERE  -->
+    <!-- Specific Page CSS goes HERE -->
     {% block stylesheets %}{% endblock stylesheets %}
-
 </head>
 <body>
-	<div class="wrapper">
+    <div class="wrapper">
 
         {% include 'navigation.html' %}
-
         {% include 'sidebar.html' %}
 
-		<div class="main-panel">
-			
-			{% block content %}{% endblock content %}
-
-			{% include 'footer.html' %}
-
-		</div>
+        <div class="main-panel">
+            {% block content %}{% endblock content %}
+            {% include 'footer.html' %}
+        </div>
 
         {% if request.user.is_authenticated %}
+        {% endif %}        
 
+    </div>
 
-		{% endif %}		
+    {% include 'scripts.html' %}
 
-	</div>
-
-	{% include 'scripts.html' %}
-
-    <!-- Specific Page JS goes HERE  -->
+    <!-- Specific Page JS goes HERE -->
     {% block javascripts %}{% endblock javascripts %}
 
+    <!-- Chatbot Script -->
+    <df-messenger
+        intent="WELCOME"
+        chat-title="MedBot"
+        agent-id="ec2dd57d-08d6-4a19-8ebc-fcfa59d005ea"
+        language-code="en">
+    </df-messenger>
+
+    <!-- DialogFlow Bot Script -->
+    <script src="https://www.gstatic.com/dialogflow-console/fast/messenger/bootstrap.js?v=1"></script>
+
+    <!-- Optional: Chatbot Styles -->
+    <style>
+        df-messenger {
+            --df-messenger-bot-message: #e0e0e0;
+            --df-messenger-user-message: #cfe9ff;
+            --df-messenger-chat-background-color: #ffffff;
+            --df-messenger-button-titlebar-color: #007bff;
+            --df-messenger-button-titlebar-font-color: white;
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 9999;
+        }
+    </style>
 </body>
 </html>
